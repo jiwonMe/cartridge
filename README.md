@@ -45,6 +45,10 @@ tests/                            Compiler and embedded PostgreSQL tests
 dist/                             Generated artifacts (gitignored)
 ```
 
+## Use as a GitHub template
+
+Create your own repository with **Use this template**, then follow [the template deployment guide](docs/TEMPLATE.md). The included manually triggered GitHub Actions workflow can plan/apply Supabase migrations, deploy Edge Functions, synchronize secrets, reconcile Polar webhooks, and publish downloadable consent/agent artifacts. Configure separate GitHub Environments and approval rules before granting deployment credentials. Account provisioning, OAuth client registration, and static hosting remain explicit operator setup.
+
 ## Quick start
 
 Requires Node.js 22+, a recent Supabase CLI, and Docker for the full local Supabase stack. The test suite uses PGlite and does not require Docker.
