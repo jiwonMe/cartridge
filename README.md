@@ -7,7 +7,14 @@
 Click [**Use this template**](https://github.com/new?template_name=cartridge&template_owner=jiwonMe), clone your new repository, and open it in your coding agent. Replace the bracketed fields below, then copy and paste the prompt. No npm publication of `@cartridge/core` is required to work from the template.
 
 ```text
-Build an agent-native product in this repository using Cartridge.
+Build an agent-native product using the Cartridge framework:
+https://github.com/jiwonMe/cartridge
+
+If I have not already provided a product repository, use that GitHub repository
+as a template to create a separate repository for this product, then clone it
+and work there. Ask for the destination owner/name and visibility if unknown.
+Do not modify or push product-specific changes to the upstream Cartridge repo.
+If I have already provided a template-derived repository, work in that checkout.
 
 Product brief:
 - Name: [product name]
