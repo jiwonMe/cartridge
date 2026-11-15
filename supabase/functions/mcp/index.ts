@@ -2,6 +2,8 @@ import { McpServer } from 'npm:@modelcontextprotocol/sdk@1.32.2/server/mcp.js';
 import { WebStandardStreamableHTTPServerTransport } from 'npm:@modelcontextprotocol/sdk@1.32.2/server/webStandardStreamableHttp.js';
 import { createClient } from 'npm:@supabase/supabase-js@2.95.3';
 import { z } from 'npm:zod@4.6.7';
+import { formatSafeMcpResponse } from '../_shared/response.ts';
+import { parseOAuthClientIds, isOAuthClientAllowed } from '../_shared/oauth.ts';
 import { Polar } from 'npm:@polar-sh/sdk@0.42.5';
 import { parseProducts } from '../_shared/polar.ts';
 import manifest from './mcp-manifest.json' with { type: 'json' };
@@ -18,18 +20,15 @@ const metadataUrl = `${resource}/.well-known/oauth-protected-resource`;
 const allowedOrigins = (Deno.env.get('CARTRIDGE_ALLOWED_ORIGINS') ?? '').split(',').filter(Boolean);
 // Supabase commonly issues aud=authenticated. Restrict OAuth clients as well as audience.
 const audience = env('CARTRIDGE_TOKEN_AUDIENCE');
-const clientIds = env('CARTRIDGE_OAUTH_CLIENT_IDS').split(',').filter(Boolean);
+// With Dynamic OAuth Apps enabled, clients register themselves and the provider issues the client ID
+// at runtime, so an empty allowlist must not stop the function from starting. A non-empty allowlist
+// still narrows acceptance to the listed clients.
+const clientIds = parseOAuthClientIds(Deno.env.get('CARTRIDGE_OAUTH_CLIENT_IDS'));
 const polarToken = Deno.env.get('POLAR_ACCESS_TOKEN');
 const polarServer = Deno.env.get('POLAR_SERVER') ?? 'production';
 if (!['production', 'sandbox'].includes(polarServer)) throw new Error('Invalid POLAR_SERVER');
 const polar = polarToken ? new Polar({ accessToken: polarToken, server: polarServer as 'production' | 'sandbox' }) : null;
 const products = polar ? parseProducts(env('POLAR_PRODUCT_CREDITS')) : {};
-
-function result(data: unknown, error: unknown) {
-  const body = error ? { ok: false, error_code: 'DATABASE_ERROR', remediation: 'Check arguments and contact the operator if the problem persists.' } : data;
-  return { isError: Boolean(error) || (typeof data === 'object' && data !== null && 'ok' in data && data.ok === false),
-    content: [{ type: 'text' as const, text: JSON.stringify(body) }] };
-}
 
 Deno.serve(async (req: Request) => {
   const origin = req.headers.get('origin');
@@ -62,9 +61,24 @@ Deno.serve(async (req: Request) => {
   const { data: claimData, error: claimError } = await db.auth.getClaims(token);
   const claims = claimData?.claims;
   const aud = claims?.aud;
+  const clientAllowed = isOAuthClientAllowed(claims?.client_id, clientIds);
   if (claimError || !claims || claims.iss !== `${supabaseUrl}/auth/v1` || claims.sub !== userData.user.id ||
       !(Array.isArray(aud) ? aud.includes(audience) : aud === audience) ||
-      typeof claims.client_id !== 'string' || !clientIds.includes(claims.client_id) || claims.role !== 'authenticated') return unauthorized();
+      !clientAllowed || claims.role !== 'authenticated') return unauthorized();
+
+  const exports = db.storage.from('cartridge-exports');
+  const result = (data: unknown, error: unknown) => formatSafeMcpResponse({
+    async upload(path, body) {
+      const { error } = await exports.upload(path, body, { contentType: 'application/json', upsert: false });
+      if (error) throw error;
+    },
+    async sign(path, seconds) {
+      const { data, error } = await exports.createSignedUrl(path, seconds);
+      if (error || !data?.signedUrl) throw error ?? new Error('Signing failed');
+      return data.signedUrl;
+    },
+    async remove(path) { const { error } = await exports.remove([path]); if (error) throw error; },
+  }, userData.user.id, data, error);
 
   const server = new McpServer({ name: manifest.name, version: manifest.version });
   server.registerResource('skill-manual', 'skill://manual', { mimeType: 'text/markdown' }, (uri: URL) => ({

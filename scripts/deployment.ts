@@ -1,4 +1,5 @@
 import { parseProducts } from '../supabase/functions/_shared/polar.js';
+import { parseOAuthClientIds } from '../supabase/functions/_shared/oauth.js';
 
 export function deploymentConfig(env: NodeJS.ProcessEnv) {
   const required = (name: string) => {
@@ -18,7 +19,8 @@ export function deploymentConfig(env: NodeJS.ProcessEnv) {
   if (!['staging', 'production'].includes(environment)) throw new Error('Invalid deployment environment');
   if ((environment === 'production') !== (server === 'production')) throw new Error('Environment and Polar server must match');
   const products = parseProducts(required('POLAR_PRODUCT_CREDITS'));
-  const clientIds = required('CARTRIDGE_OAUTH_CLIENT_IDS');
+  // Empty means any OAuth client from the verified project issuer; not anonymous access.
+  const clientIds = parseOAuthClientIds(env.CARTRIDGE_OAUTH_CLIENT_IDS).join(',');
   const audience = required('CARTRIDGE_TOKEN_AUDIENCE');
   const origins = required('CARTRIDGE_ALLOWED_ORIGINS');
   for (const origin of origins.split(',')) {

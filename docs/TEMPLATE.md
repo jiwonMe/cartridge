@@ -49,7 +49,7 @@ The CI management token is never installed in the Edge Functions. The runtime to
 | `SUPABASE_PROJECT_REF` | Your 20-character project reference |
 | `CARTRIDGE_SITE_URL` | `https://app.example.com` — HTTPS origin hosting the consent page |
 | `CARTRIDGE_TOKEN_AUDIENCE` | `authenticated` (verify actual issued audience) |
-| `CARTRIDGE_OAUTH_CLIENT_IDS` | Comma-separated registered OAuth client IDs |
+| `CARTRIDGE_OAUTH_CLIENT_IDS` | Optional comma-separated allowlist. Empty/unset accepts any OAuth client with a valid token from this project's issuer; enable Allow Dynamic OAuth Apps separately in Supabase for automatic registration. |
 | `CARTRIDGE_ALLOWED_ORIGINS` | Comma-separated exact HTTPS browser origins, no trailing slash |
 | `POLAR_ORGANIZATION_ID` | Organization owning the products and webhook |
 | `POLAR_PRODUCT_CREDITS` | `{"PRODUCT_UUID":100,"SUBSCRIPTION_PRODUCT_UUID":500}` |

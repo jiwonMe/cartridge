@@ -13,8 +13,14 @@ test('deployment derives endpoints from a validated project reference', () => {
   assert.equal(config.endpoint, 'https://abcdefghijklmnopqrst.supabase.co/functions/v1/mcp');
   assert.equal(config.server, 'sandbox');
 });
+test('deployment allows an empty OAuth client allowlist for dynamic registration', () => {
+  const config = deploymentConfig({ ...valid, CARTRIDGE_OAUTH_CLIENT_IDS: '' });
+  assert.equal(config.clientIds, '');
+  assert.equal(config.endpoint, 'https://abcdefghijklmnopqrst.supabase.co/functions/v1/mcp');
+});
 test('deployment fails closed on missing settings and unsafe environment combinations', () => {
-  for (const key of Object.keys(valid)) assert.throws(() => deploymentConfig({ ...valid, [key]: '' }));
+  const required = Object.keys(valid).filter(key => key !== 'CARTRIDGE_OAUTH_CLIENT_IDS');
+  for (const key of required) assert.throws(() => deploymentConfig({ ...valid, [key]: '' }));
   for (const patch of [
     { POLAR_SERVER: 'production' }, { DEPLOY_ENVIRONMENT: 'production' },
     { CARTRIDGE_SITE_URL: 'http://app.example.com' }, { CARTRIDGE_SITE_URL: 'https://app.example.com/path' },

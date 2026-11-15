@@ -34,6 +34,55 @@ and the tests. Inspect the repository and migration history before editing.
 Ask only blocking product questions; otherwise state reasonable assumptions
 and implement a small, end-to-end version rather than stopping at a plan.
 
+Connection setup:
+- Before remote operations, inspect the MCP servers/connectors already available
+  in this agent. Reuse authorized connections and identify missing capabilities.
+- GitHub: connect an official/trusted GitHub MCP server or connector for the
+  destination repository, Actions, and Environment setup. Verify the account
+  and repository scope with a read-only request before making changes.
+- Supabase: connect an official/trusted Supabase MCP server or connector scoped
+  to this product's staging project. Start with read-only access for inspection;
+  request write access only for an explicitly approved operation. Never select
+  a production project merely because it is the default connection.
+- Polar: use an official/trusted connector if one is available and supports the
+  required operations. Otherwise use the documented SDK/API and CI workflow;
+  do not invent a Polar MCP endpoint or install an unverified integration.
+  Confirm the organization and sandbox environment before accessing billing.
+- Vercel: connect the official Vercel MCP server or connector to deploy the
+  static OAuth consent page. Verify the authenticated account, team, and target
+  project with a read-only request. If no project exists, ask before creating
+  one; do not select an unrelated project or upgrade a paid plan automatically.
+  Use the documented Vercel CLI/API or dashboard if the connector cannot perform
+  the required deployment operation, and explain that limitation explicitly.
+- After an approved environment-specific build, deploy the contents of public/
+  (including oauth/consent/index.html and generated config.json) as the Vercel
+  site's root. Do not publish the repository root, server credentials, or .env
+  files. The browser config may contain only the Supabase URL and public key.
+  For Git-based deployments, configure the build and public output directory
+  explicitly; generated config.json is gitignored and must be built with the
+  target environment's settings, not assumed to exist in the checkout.
+- Use a stable HTTPS Vercel production URL or approved custom domain for each
+  environment's consent site. Set CARTRIDGE_SITE_URL and the Supabase Auth Site
+  URL to that origin, and the consent path to /oauth/consent/. Keep staging and
+  production settings separate. Verify the deployed consent HTML and config
+  routes, then test the OAuth redirect flow with approval. A preview deployment
+  alone is not proof that the configured production consent URL works.
+- Connect other services only when required by the product brief.
+- For a missing connection, explain its purpose and minimum permissions, then
+  guide me through the agent platform's connection/OAuth approval flow. Never
+  request tokens in chat or commit them. Use a secure secret-entry mechanism
+  or direct me to the provider/GitHub Environment secret settings instead.
+- If this agent cannot use a required connector, state the limitation and offer
+  a supported CLI/API or manual setup path. Continue local implementation where
+  possible. Report each connection as verified, missing, or awaiting approval;
+  do not claim it works without a successful read-only check. Agent connections
+  do not automatically provision the separate credentials required by CI.
+- After an approved staging deployment, help me register the product's own
+  remote MCP endpoint from dist/.mcp.json in my target agent, complete OAuth,
+  and verify tool discovery plus a read-only call. Load skill://manual or
+  load_skill_sop if supported, otherwise install dist/skills/SKILL.md using
+  that agent's supported mechanism. Do not test paid mutations without consent.
+
 Implementation requirements:
 1. Use PostgreSQL for state and invariants, MCP for tools, and generated
    SKILL.md instructions for agent behavior. Do not add an application
@@ -206,18 +255,35 @@ v0.1 supports **single-row UPDATE only**, not arbitrary inserts, deletes, multi-
 
 Intent calls are not idempotent. Do not blindly retry after an ambiguous network failure. Read state first. The example rejects transitions to the current status to avoid immediately charging twice for the same transition.
 
+## Bounded MCP responses and private exports
+
+All tool results pass through a response formatter. Up to **15 KiB of UTF-8 JSON text** is returned inline. Larger results, up to **10 MiB**, are uploaded with the user's JWT to the private `cartridge-exports` bucket and replaced by a compact download envelope. Apply `003_response_exports.sql` before deploying this runtime.
+
+- Exports are isolated by `auth.uid()` folders and random UUID filenames; no service-role key is used by MCP.
+- Array previews have a separate 2 KiB budget and at most three rows. A single huge row is omitted rather than copied into the envelope.
+- Mutation audit IDs, actual charges, and small error/remediation fields are retained. Export failures do not change an already committed mutation's success flag; `delivery_error` warns the agent **not to repeat the mutation**.
+- Signed links are bearer credentials, reusable for 900 seconds, not one-time URLs. Share only with the requesting user. Link expiry does **not** delete stored data.
+- Configure a trusted scheduled job to run `npx tsx scripts/cleanup-exports.ts --apply` with `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`. It deletes objects older than 24 hours using the Storage API. Without `--apply` it reports a count only. No cleanup schedule is installed automatically; configure retention before production traffic.
+- Results exceeding 10 MiB return a bounded delivery warning. This middleware serializes results in memory; it is not a streaming exporter for hundreds of MB. Large datasets need a domain export worker.
+
+The limit covers tool text, not JSON-RPC framing, resource/prompt manuals, host-specific token budgets, or the cost of fetching data. Host limits vary; 15 KiB is a framework budget, not a universal MCP guarantee. Local agents can download privately and process files without placing their full contents into model context, but instructions and summaries still consume tokens.
+
+Queries remain capped at 50 rows; automatic cursor pagination is not implemented. Domain authors should add stable cursor/filter APIs for large collections. Signed upload slots and file parsing/import are likewise domain-specific and not implemented by this response middleware; add content/size validation, ownership checks, job status and idempotency before exposing an ingestion tool. Do not put base64 files in tool arguments.
+
 ## OAuth and hosting
 
 OAuth is infrastructure, not something a config compiler can provision automatically.
 
 1. Enable the Supabase OAuth server for your hosted project. `config.toml` configures **local** Supabase; it does not configure the hosted dashboard.
 2. Host `public/` on your application's HTTPS origin. Supabase Edge Functions do not automatically serve these static files. Set the Supabase Auth Site URL to this origin, and the consent path to `/oauth/consent/`.
-3. Register OAuth clients and their exact redirect URIs. Require authorization-code flow with PKCE in your clients. Dynamic registration is disabled by default; clients that require it need an explicit operator policy.
-4. Configure `CARTRIDGE_OAUTH_CLIENT_IDS` as an allowlist of registered client IDs, and `CARTRIDGE_TOKEN_AUDIENCE` to the expected issued audience (commonly `authenticated` for Supabase).
+3. Choose a client registration policy. For dynamic registration, enable **Allow Dynamic OAuth Apps** in the hosted Supabase OAuth Server settings. Supporting MCP clients can then register themselves. For manual registration, register each client using its documented redirect URI; do not guess a localhost port or use a literal `<port>` placeholder. The local `config.toml` keeps dynamic registration disabled by default; enable `auth.oauth_server.allow_dynamic_registration` explicitly for local testing if needed.
+4. `CARTRIDGE_OAUTH_CLIENT_IDS` is optional. Leave it unset or empty to accept any OAuth client with a valid token from this project's issuer; set comma-separated IDs to restrict access to those clients. This does not itself enable provider-side dynamic registration, and it cannot distinguish dynamically registered clients from manually registered ones. Set `CARTRIDGE_TOKEN_AUDIENCE` to the expected issued audience (commonly `authenticated` for Supabase).
 5. Set `CARTRIDGE_ALLOWED_ORIGINS` to the comma-separated browser origins you trust. Non-browser clients without Origin are allowed. No wildcard CORS is enabled.
 6. Verify the provider's discovery, issuer, audience, `client_id`, and redirect behavior in your environment before connecting real accounts.
 
-The runtime validates the user and signed claims, including issuer, audience, role, and OAuth client ID. Ordinary login JWTs without an allowed OAuth `client_id` are rejected. A shared Supabase audience is not a dedicated per-resource audience; dedicate OAuth clients to this resource and use a dedicated audience if your provider supports it. Fine-grained per-tool OAuth scope enforcement is not included in v0.1; accepted clients receive the authenticated user's configured domain access.
+The runtime validates the user and signed claims, including issuer, audience, role, and OAuth client ID. Ordinary login JWTs without a nonempty OAuth `client_id` are rejected. If an allowlist is configured, unlisted client IDs are also rejected. A shared Supabase audience is not a dedicated per-resource audience; dedicate OAuth clients to this resource and use a dedicated audience if your provider supports it. Fine-grained per-tool OAuth scope enforcement is not included in v0.1; accepted clients receive the authenticated user's configured domain access. An empty allowlist deliberately broadens client acceptance: do not treat it as equivalent to a dedicated-client policy. Prefer an explicit allowlist for restricted deployments.
+
+**Troubleshooting dynamic registration:** A missing client-ID list must not cause a startup 500. Metadata discovery remains available and unauthenticated requests receive a 401 OAuth challenge. If a valid connection is rejected, check the provider's dynamic registration setting, token issuer/audience/client ID, and browser origin policy. Enabling dynamic registration alone does not make every MCP client compatible. In GitHub deployments, put the optional list in the Environment **variable** `CARTRIDGE_OAUTH_CLIENT_IDS`; the workflow synchronizes it to a Supabase function secret. Clear the variable and redeploy to remove a previous restriction. No Clerk integration is required.
 
 The 401 challenge advertises an actually routed metadata endpoint:
 
