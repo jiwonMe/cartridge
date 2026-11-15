@@ -2,6 +2,67 @@
 
 **The agent is the operating system. Your application is the cartridge.**
 
+## Build your product with an agent
+
+Click [**Use this template**](https://github.com/new?template_name=cartridge&template_owner=jiwonMe), clone your new repository, and open it in your coding agent. Replace the bracketed fields below, then copy and paste the prompt. No npm publication of `@cartridge/core` is required to work from the template.
+
+```text
+Build an agent-native product in this repository using Cartridge.
+
+Product brief:
+- Name: [product name]
+- Target users: [who uses it]
+- Problem and outcome: [what users need to accomplish]
+- Example requests users will give their agent:
+  1. [a read or search request]
+  2. [a state-changing request]
+  3. [a request to undo a supported change]
+- Domain entities: [entities, relationships, and ownership rules]
+- Invariants: [what must never happen, and valid state transitions]
+- Billing: [which actions cost credits, how many, and free actions]
+- Initial scope: [must-have features and explicit non-goals]
+
+First read README.md, docs/TEMPLATE.md, SECURITY.md, the example domain,
+and the tests. Inspect the repository and migration history before editing.
+Ask only blocking product questions; otherwise state reasonable assumptions
+and implement a small, end-to-end version rather than stopping at a plan.
+
+Implementation requirements:
+1. Use PostgreSQL for state and invariants, MCP for tools, and generated
+   SKILL.md instructions for agent behavior. Do not add an application
+   frontend or a separate controller backend unless the brief requires it.
+2. Replace domain/cartridge.config.ts and implement the domain SQL.
+   For a fresh, never-deployed template, replace the example domain migration;
+   for an existing deployment, add migrations without rewriting applied ones.
+   Preserve the core engine and billing migrations.
+3. Enforce ownership with RLS and use the restricted cartridge_executor role
+   for intents. Keep client writes and engine helper access blocked. Validate,
+   mutate, charge, and audit within the documented transaction boundary.
+4. Use generic undo only for reviewed, registered single-row updates. Explain
+   unsupported workflows and external side effects instead of promising undo.
+5. Write useful tool descriptions, billing notes, and SOPs. On failure, return
+   actionable remediation. Never blindly retry ambiguous mutations.
+6. Reuse Polar checkout, portal, and webhook support. Do not invent product
+   IDs, credentials, prices, or successful payments. Do not change live
+   billing settings or create paid resources without my explicit approval.
+7. Add domain tests for the happy path, invalid transitions, cross-user
+   isolation, failed-payment rollback, and supported undo/conflict behavior.
+   Update example-specific tests and documentation to match the new domain.
+8. Run npm ci, npm run check, and the documented Deno checks. Report exact
+   results and distinguish local tests from unverified provider integrations.
+9. Prepare the GitHub Environment setup using docs/TEMPLATE.md. List required
+   secrets and variables without putting secret values in chat or source.
+   Do not deploy, push migrations, or run the deploy workflow without approval.
+
+Deliver working code, an updated product README, example agent interactions,
+a concise change summary, test results, and the remaining setup checklist.
+Keep source code, documentation, and generated instructions in English.
+```
+
+**Example brief:** “Build an editorial approval cartridge for small publishing teams. Each user owns articles with `draft`, `review`, and `published` states. Agents can list articles and change publication status. Publishing requires zero unresolved checks and costs one credit; reads and moves to review are free. Support conflict-checked undo of publication updates. Exclude CMS publishing, collaboration, and subscription upgrades from the first version.” Replace the product-brief fields with this idea or your own.
+
+> The template supplies the framework, not provisioned accounts. Supabase and Polar setup, OAuth registration, consent-page hosting, and production approval rules still need an operator. Start in staging and verify a real sandbox checkout before going live.
+
 Cartridge (`@cartridge/core`) is an experimental, MIT-licensed framework for agent-native applications. Instead of building another frontend and controller layer, define:
 
 1. **State and invariants** in PostgreSQL.
