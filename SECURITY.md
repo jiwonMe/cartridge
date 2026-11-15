@@ -13,6 +13,8 @@ Do not publish exploitable vulnerabilities, tokens, or user data in public issue
 - Keep `cartridge` out of PostgREST's exposed schemas. Engine tables and helper functions are not client APIs.
 - Only registered, reviewed single-row update targets may use generic undo.
 - OAuth identity verification does not replace row-level ownership checks.
+- Polar fulfillment requires raw-body signature verification, an operator-owned product mapping, a trusted external customer ID, and a unique order ledger entry. User-supplied metadata is not an identity fallback.
+- Checkout and customer portal sessions bind to the verified user, never to a tool-supplied user ID. Portal URLs are sensitive credentials.
 - Stripe fulfillment requires raw-body signature verification, an operator-owned price mapping, and a unique Checkout Session ledger entry.
 - Do not accept alternate token issuers, arbitrary browser origins, or unrestricted OAuth clients.
 - SOP instructions guide an agent but are not an authorization mechanism.

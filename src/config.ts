@@ -21,7 +21,7 @@ export const cartridgeConfigSchema = z.object({
     creditCostNote: z.string().min(1), params: z.record(identifier, parameter),
   }).strict()),
 }).strict().superRefine((config, ctx) => {
-  const names = new Set(['cartridge_status', 'cartridge_undo']);
+  const names = new Set(['cartridge_status', 'cartridge_undo', 'cartridge_checkout', 'get_billing_portal']);
   for (const tool of [...config.queries, ...config.intents]) {
     if (names.has(tool.name)) ctx.addIssue({ code: 'custom', message: `Duplicate or reserved tool: ${tool.name}` });
     names.add(tool.name);

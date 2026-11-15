@@ -12,7 +12,7 @@ test('engine: rollback, isolation, protected ledger, undo, and billing deduplica
       CREATE SCHEMA auth; CREATE TABLE auth.users(id uuid PRIMARY KEY);
       CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS $$ SELECT nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
       GRANT USAGE ON SCHEMA auth TO authenticated; GRANT EXECUTE ON FUNCTION auth.uid() TO authenticated;`);
-    for (const file of ['000_cartridge_engine.sql', '001_domain_app.sql']) {
+    for (const file of ['000_cartridge_engine.sql', '001_domain_app.sql', '002_polar_billing.sql']) {
       await db.exec(await readFile(new URL(`../supabase/migrations/${file}`, import.meta.url), 'utf8'));
     }
     await db.exec(`INSERT INTO auth.users VALUES ('${alice}'), ('${bob}');
@@ -47,6 +47,20 @@ test('engine: rollback, isolation, protected ledger, undo, and billing deduplica
     assert.equal((await db.query<{ granted: boolean }>(`SELECT admin_grant_credits('cs_1','${alice}',20) AS granted`)).rows[0].granted, true);
     assert.equal((await db.query<{ granted: boolean }>(`SELECT admin_grant_credits('cs_1','${alice}',20) AS granted`)).rows[0].granted, false);
     await db.exec('RESET ROLE; SET ROLE authenticated;');
+    assert.equal((await rpc('rpc_cartridge_status()')).credit_balance, 20);
+    await assert.rejects(db.exec(`SELECT admin_sync_polar_subscription('sub1','${alice}',true,now())`), /permission denied/);
+    await db.exec(`RESET ROLE; UPDATE cartridge.entitlements SET plan_tier='free' WHERE user_id='${alice}'; SET ROLE service_role;`);
+    await db.exec(`SELECT admin_sync_polar_subscription('sub1','${alice}',true,'2026-01-01');
+      SELECT admin_sync_polar_subscription('sub2','${alice}',true,'2026-01-01');
+      SELECT admin_sync_polar_subscription('sub1','${alice}',false,'2026-01-03');
+      SELECT admin_sync_polar_subscription('sub1','${alice}',true,'2026-01-02');`);
+    await db.exec('RESET ROLE; SET ROLE authenticated;');
+    assert.equal((await rpc('rpc_cartridge_status()')).plan_tier, 'pro');
+    await db.exec(`RESET ROLE; SET ROLE service_role;
+      SELECT admin_sync_polar_subscription('sub2','${alice}',false,'2026-01-04');`);
+    await assert.rejects(db.exec(`SELECT admin_sync_polar_subscription('sub2','${bob}',true,'2026-01-05')`), /account mismatch/);
+    await db.exec('RESET ROLE; SET ROLE authenticated;');
+    assert.equal((await rpc('rpc_cartridge_status()')).plan_tier, 'free');
     assert.equal((await rpc('rpc_cartridge_status()')).credit_balance, 20);
   } finally { await db.close(); }
 });

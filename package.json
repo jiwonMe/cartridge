@@ -25,6 +25,8 @@
     "supabase/functions/deno.lock",
     "supabase/functions/mcp/index.ts",
     "supabase/functions/billing-webhook/index.ts",
+    "supabase/functions/stripe-webhook/index.ts",
+    "supabase/functions/_shared/*.ts",
     "public/oauth/consent/index.html",
     "README.md",
     "LICENSE"
@@ -43,6 +45,7 @@
   "devDependencies": {
     "@electric-sql/pglite": "^0.3.14",
     "@modelcontextprotocol/sdk": "^1.32.2",
+    "@polar-sh/sdk": "0.42.5",
     "@supabase/supabase-js": "2.95.3",
     "@types/node": "^22.0.0",
     "tsx": "^4.20.0",

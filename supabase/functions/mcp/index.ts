@@ -2,6 +2,8 @@ import { McpServer } from 'npm:@modelcontextprotocol/sdk@1.32.2/server/mcp.js';
 import { WebStandardStreamableHTTPServerTransport } from 'npm:@modelcontextprotocol/sdk@1.32.2/server/webStandardStreamableHttp.js';
 import { createClient } from 'npm:@supabase/supabase-js@2.95.3';
 import { z } from 'npm:zod@4.6.7';
+import { Polar } from 'npm:@polar-sh/sdk@0.42.5';
+import { parseProducts } from '../_shared/polar.ts';
 import manifest from './mcp-manifest.json' with { type: 'json' };
 import skill from './skill.json' with { type: 'json' };
 
@@ -17,6 +19,11 @@ const allowedOrigins = (Deno.env.get('CARTRIDGE_ALLOWED_ORIGINS') ?? '').split('
 // Supabase commonly issues aud=authenticated. Restrict OAuth clients as well as audience.
 const audience = env('CARTRIDGE_TOKEN_AUDIENCE');
 const clientIds = env('CARTRIDGE_OAUTH_CLIENT_IDS').split(',').filter(Boolean);
+const polarToken = Deno.env.get('POLAR_ACCESS_TOKEN');
+const polarServer = Deno.env.get('POLAR_SERVER') ?? 'production';
+if (!['production', 'sandbox'].includes(polarServer)) throw new Error('Invalid POLAR_SERVER');
+const polar = polarToken ? new Polar({ accessToken: polarToken, server: polarServer as 'production' | 'sandbox' }) : null;
+const products = polar ? parseProducts(env('POLAR_PRODUCT_CREDITS')) : {};
 
 function result(data: unknown, error: unknown) {
   const body = error ? { ok: false, error_code: 'DATABASE_ERROR', remediation: 'Check arguments and contact the operator if the problem persists.' } : data;
@@ -66,6 +73,31 @@ Deno.serve(async (req: Request) => {
   server.registerPrompt('load_skill_sop', { description: 'Load the complete Cartridge manual.' }, () => ({
     messages: [{ role: 'user', content: { type: 'text', text: skill } }],
   }));
+  server.registerTool('cartridge_checkout', {
+    description: 'Create a payment link for the signed-in account. Ask the user before purchasing. Omit product_id to list available credit products.',
+    inputSchema: { product_id: z.string().optional() },
+  }, async ({ product_id }: { product_id?: string }) => {
+    if (!polar) return result({ ok: false, error_code: 'BILLING_NOT_CONFIGURED', remediation: 'Contact the operator.' }, null);
+    if (!product_id) return result({ ok: true, products }, null);
+    if (!Object.hasOwn(products, product_id)) return result({ ok: false, error_code: 'UNKNOWN_PRODUCT', remediation: 'Call cartridge_checkout without product_id to list configured products.' }, null);
+    try {
+      const checkout = await polar.checkouts.create({ products: [product_id], externalCustomerId: userData.user.id });
+      return result({ ok: true, checkout_url: checkout.url, credits_per_paid_order: products[product_id] }, null);
+    } catch {
+      return result({ ok: false, error_code: 'BILLING_UNAVAILABLE', remediation: 'Checkout creation failed. Contact the operator; no credits were charged by this tool.' }, null);
+    }
+  });
+  server.registerTool('get_billing_portal', {
+    description: 'Create a private customer portal link for your receipts and subscription management. Do not share the link.', inputSchema: {},
+  }, async () => {
+    if (!polar) return result({ ok: false, error_code: 'BILLING_NOT_CONFIGURED', remediation: 'Contact the operator.' }, null);
+    try {
+      const session = await polar.customerSessions.create({ externalCustomerId: userData.user.id });
+      return result({ ok: true, customer_portal_url: session.customerPortalUrl }, null);
+    } catch {
+      return result({ ok: false, error_code: 'PORTAL_UNAVAILABLE', remediation: 'A billing customer may not exist yet. Contact the operator if you have already paid.' }, null);
+    }
+  });
   server.registerTool('cartridge_status', { description: 'Read your plan, credits, and checkout URL.', inputSchema: {} }, async () => {
     const { data, error } = await db.rpc('rpc_cartridge_status'); return result(data, error);
   });

@@ -7,7 +7,7 @@ export const cartridgeConfig = defineCartridge({
   sop: [
     'Before changing state, call list_work_sets and check the ID, status, and unverified_count.',
     'When ok is false, follow remediation. Do not blindly retry mutations.',
-    'For PAYMENT_REQUIRED, show checkout_url to the user and wait for payment before retrying.',
+    'For PAYMENT_REQUIRED, use cartridge_checkout if checkout_url is absent. Let the user select a product, show the payment link, and wait for payment before retrying.',
     'Retain audit_id. If the user requests cancellation, call cartridge_undo with that ID. Never undo without user intent.',
     'If a network failure leaves the outcome unknown, inspect state before retrying; intent calls are not idempotent.',
   ],
