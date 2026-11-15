@@ -9,3 +9,5 @@ supabase/.branches/
 supabase/functions/mcp/mcp-manifest.json
 supabase/functions/mcp/skill.json
 public/oauth/consent/config.json
+public/oauth/consent/index.html
+public/oauth/consent/assets/

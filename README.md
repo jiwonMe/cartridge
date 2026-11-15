@@ -157,7 +157,8 @@ supabase/
     mcp/index.ts                  Manifest-driven MCP runtime
     billing-webhook/index.ts      Polar fulfillment (default)
     stripe-webhook/index.ts       Optional legacy Stripe fulfillment
-public/oauth/consent/index.html   Shared sign-in and consent page
+web/consent/                     React + shadcn/ui account and consent source
+public/oauth/consent/             Generated static account site (gitignored)
 tests/                            Compiler and embedded PostgreSQL tests
 dist/                             Generated artifacts (gitignored)
 ```
@@ -291,7 +292,13 @@ The 401 challenge advertises an actually routed metadata endpoint:
 https://PROJECT_REF.supabase.co/functions/v1/mcp/.well-known/oauth-protected-resource
 ```
 
-If a client insists on root/path-based well-known discovery rather than the advertised challenge URL, add a reverse-proxy route. The included consent page supports existing email/password accounts. User signup, password reset, and alternative identity providers are operator concerns. It never auto-approves a new consent request. For production, bundle the browser dependency yourself and configure CSP/security headers at the static host.
+If a client insists on root/path-based well-known discovery rather than the advertised challenge URL, add a reverse-proxy route. The included React account page uses local shadcn/ui-style components (Radix Slot, CVA, Tailwind CSS), bundled by Vite. It supports email/password sign-in, signup, email-confirmation guidance, recovery emails, password updates, account switching, and OAuth consent. It never auto-approves a new consent request. Alternative identity providers and Clerk are not included.
+
+### Account UI and Vercel deployment
+
+Edit UI source in `web/consent/src/`, not the generated `public/oauth/consent/` output. Run `npm run build` to generate public configuration and bundle the UI. `npm run build:ui` only rebuilds the UI and preserves `config.json`. Deploy `public/` as the static root; on Vercel use build command `npm run build` and output directory `public`. No CDN JavaScript dependency is loaded at runtime. The existing CI consent-site artifact includes the bundle.
+
+In Supabase Auth, enable email/password signup if desired, configure email confirmation and SMTP/rate limits, and add the deployed `/oauth/consent/` callback plus its recovery/query variants to the allowed Redirect URLs using Supabase's documented matching rules. The page carries `authorization_id` through signup and recovery links; expired OAuth requests must be restarted from the agent. Test email links with your project's email templates and redirect policy before launch. Password reset uses Supabase's browser session recovery flow; the UI alone cannot configure email delivery or redirect permissions. Configure CSP and other security headers on the static host.
 
 ## Billing setup: Polar (default)
 
